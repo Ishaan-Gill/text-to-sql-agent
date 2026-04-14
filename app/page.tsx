@@ -1,65 +1,68 @@
-import Image from "next/image";
+"use client"
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+  return <div className="flex flex-col h-screen justify-between">
+
+<header className="bg-white p-2">
+  <div className="flex lg:flex-1 items-center justify-center">
+    <a href="#" className="m-1.5">
+      <span className="sr-only">Text-to-SQL Agent</span>
+      <img
+        className="h-8 w-auto"
+        src="http://localhost:3000/watsonx.svg"
+        alt=""    
+      />
+    </a>
+    <h1 className="text-black font-bold">Text-to-SQL Agent</h1>
+   </div>
+</header>
+
+
+<div className="flex flex-col h-full">
+  <div className="col-start-1 col-end-8 p-3 rounded-lg">
+    <div className="flex flex-row items-center">
+      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-400 text-white flex-shrink-0 text-sm">
+        Me
+      </div>
+      <div className="relative ml-3 text-sm bg-white py-2 px-4 shadow rounded-xl">
+        <div>Tell me a joke about SQL</div>
+      </div>
     </div>
-  );
+  </div>
+  <div className="col-start-6 col-end-13 p-3 rounded-lg">
+    <div className="flex items-center justify-start flex-row-reverse">
+      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-400 flex-shrink-0 text-sm">
+        AI
+      </div>
+      <div className="relative mr-3 text-sm bg-indigo-100 py-2 px-4 shadow rounded-xl">
+        <div>Joke regarding SQL asked earlier</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div className="flex flex-col flex-auto justify-between bg-gray-100 p-6">
+  <div className="top-[100vh] flex flex-row items-center h-16 rounded-xl bg-white w-full px-4">
+    <div className="flex-grow ml-4">
+      <div className="relative w-full">
+        <input
+          type="text"
+          className="flex w-full border rounded-xl focus:outline-none focus:border-indigo-300 pl-4 h-10"
+        />
+      </div>
+    </div>
+    <div className="ml-4">
+      <button
+        className="flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white px-4 py-2 flex-shrink-0"
+      >
+        <span>Send</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+  </div>;
 }
