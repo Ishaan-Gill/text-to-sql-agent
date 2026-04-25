@@ -1,60 +1,178 @@
 "use server"
 
-import { ChatGoogle } from "@langchain/google";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 import {
     mapStoredMessagesToChatMessages,
-    StoredMessage
-} from "@langchain/core/messages"
-import { customerTable, orderTable } from "./constants";
+    type StoredMessage,
+} from "@langchain/core/messages";
 import { execute } from "./database";
+import { retriveRelevantSchema } from "./rag";
+import Groq from "groq-sdk";
+
+type QueryRow = Record<string, unknown>;
+type QuerySuccess = {
+    result: QueryRow[];
+};
+type QueryFailure = {
+    error: string;
+    failedQuery?: string;
+};
+
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY,
+});
+
+function cleanSQL(content: string) {
+    return content
+        .replace(/```sql/g, "")
+        .replace(/```/g, "")
+        .trim();
+}
+
+function normalizeExecuteResult(value: unknown): QuerySuccess | QueryFailure {
+    if (typeof value === "string") {
+        try {
+            return JSON.parse(value) as QueryFailure;
+        } catch {
+            return { error: value };
+        }
+    }
+
+    if (typeof value === "object" && value !== null) {
+        if ("result" in value) {
+            return value as QuerySuccess;
+        }
+
+        if ("error" in value) {
+            return value as QueryFailure;
+        }
+    }
+
+    return { error: "Unexpected database response" };
+}
+
+async function generateSQL(prompt: string) {
+    const response = await groq.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [
+            {
+                role: "system",
+                content: "You are an expert SQL generator. Return SQL ONLY",
+            },
+            {
+                role: "user",
+                content: prompt,
+            },
+        ],
+        temperature: 0.2,
+    });
+
+    const content = response.choices[0]?.message?.content;
+
+    if (!content) {
+        throw new Error("No response from model");
+    }
+
+    return cleanSQL(String(content));
+}
 
 export async function message(messages: StoredMessage[]) {
     const deserialized = mapStoredMessagesToChatMessages(messages);
+    const latestMessage = deserialized.at(-1);
+    const userQuery = typeof latestMessage?.content === "string"
+        ? latestMessage.content
+        : "";
 
-    const getFromDB = tool(
-        async (input) => {
-            if (input?.sql) {
-                const result = await execute(input.sql);
-                console.log({ result, sql: input.sql });
+    if (!userQuery) {
+        throw new Error("A user message is required");
+    }
 
-                return JSON.stringify(result);
-            }
-            return null;
-        },
-        {
-            name: "get_from_db",
-            description: `Get data from a database, the database has the following schema:
-  
-      ${orderTable}
-      ${customerTable}  
-      `,
-            schema: z.object({
-                sql: z
-                    .string()
-                    .describe(
-                        "SQL query to get data from a SQL database. Always put quotes around the field and table arguments."
-                    ),
-            }),
-        }
-    )
+    const relevantSchema = await retriveRelevantSchema(userQuery);
+    const systemPrompt = `
+You are an expert SQL generator.
 
+Use this schema:
+${relevantSchema}
 
+STRICT:
+Return ONLY SQL
+No explanation
+No markdown
+Use exact table names WITH double quotes
+Do NOT pluralize
+The table names are CASE-SENSITIVE and EXACT
+Any other table name is INVALID.
+Only generate SELECT queries
+Never modify the database
+Never use multiple statements
 
-    const agent = createReactAgent({
-        llm: new ChatGoogle({
-            model: "gemini-2.5-flash",
-            apiKey: process.env.GOOGLE_API_KEY,
-        }),
-        tools: [getFromDB],
-    });
+Column names:
+customerid (NOT customer_id)
+created_at (NOT createdat)
 
-    const response = await agent.invoke({
-        messages: deserialized,
-    });
+When calculating total revenue, prefer:
+SELECT SUM("amount") FROM "order"
 
-    return response.messages[response.messages.length - 1].content;
+When listing customers with orders:
+- Use INNER JOIN (exclude customers with no orders)
+`;
 
+    const prompt = `
+${systemPrompt}
+User query:
+${userQuery}
+`;
+    const cleanedSQL = await generateSQL(prompt);
+    let currentResult = normalizeExecuteResult(await execute(cleanedSQL));
+
+    const MAX_RETRIES = 2;
+    let attempts = 0;
+
+    while (attempts < MAX_RETRIES && "error" in currentResult) {
+        attempts++;
+        const failedQuery = currentResult.failedQuery ?? cleanedSQL;
+       const fixPrompt = `
+The following SQL query failed:
+
+Query:
+${failedQuery}
+
+Error:
+${currentResult.error}
+
+Schema:
+${relevantSchema}
+
+STRICT FIX RULES:
+- Use ONLY columns from schema
+- order_item has: order_id, product_id, quantity
+- product has: name, category, price
+- order has: amount
+- NEVER use columns like product_name or oi.amount
+
+Correct join path:
+customer → order → order_item → product
+
+If calculating spending on a category:
+SUM(product.price * order_item.quantity)
+
+Fix ONLY the SQL.
+Return ONLY the corrected SQL query.
+`;
+        const retriedSQL = await generateSQL(fixPrompt);
+        currentResult = normalizeExecuteResult(await execute(retriedSQL));
+        console.log("retry attempts:", attempts);
+        console.log("Fixed Sql:", retriedSQL);
+    }
+
+    console.log("final result:", currentResult);
+
+    if ("error" in currentResult) {
+        return currentResult.error;
+    }
+
+    return currentResult.result
+        .map((row) =>
+            Object.entries(row)
+                .map(([k, v]) => `${k}: ${v}`))
+                .join("\n\n");
 }

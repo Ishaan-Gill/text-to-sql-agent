@@ -1,4 +1,4 @@
-// "use server"
+"use server"
 
 import { schemaDocs } from "./schema";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
@@ -15,7 +15,11 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 
 export async function retriveRelevantSchema(query: string) {
     if (!vectorStore) {
-        throw new Error("RAG not initialized");
+        vectorStore = await MemoryVectorStore.fromTexts(
+            schemaDocs,
+            schemaDocs.map((_, i) => `doc-${i}`),
+            embeddings
+        );
     }
     const results = await vectorStore.similaritySearch(query, 2);
     return results.map((doc) => doc.pageContent).join("\n\n");
@@ -27,10 +31,4 @@ export async function initRAG() {
         schemaDocs.map((_, i) => `doc-${i}`),
         embeddings
     );
-}
-export async function testRAG() {
-    await initRAG();
-    const res = await retriveRelevantSchema("show customer emails");
-    console.log("RAG RESULT:",res)
-    
 }
