@@ -7,6 +7,7 @@ import {
 import { execute } from "./database";
 import { retriveRelevantSchema } from "./rag";
 import Groq from "groq-sdk";
+import { initDB } from "./database";
 
 type QueryRow = Record<string, unknown>;
 type QuerySuccess = {
@@ -75,7 +76,18 @@ async function generateSQL(prompt: string) {
     return cleanSQL(String(content));
 }
 
+function fixSQL(sql: string) {
+    return sql
+        .replace(/\bFROM\s+(\w+)(\s+\w+)?/gi, (_, table, alias) => {
+            return `FROM "${table}"${alias ?? ""}`;
+        })
+        .replace(/\bJOIN\s+(\w+)(\s+\w+)?/gi, (_, table, alias) => {
+            return `JOIN "${table}"${alias ?? ""}`;
+        });
+}
+
 export async function message(messages: StoredMessage[]) {
+    await initDB();
     const deserialized = mapStoredMessagesToChatMessages(messages);
     const latestMessage = deserialized.at(-1);
     const userQuery = typeof latestMessage?.content === "string"
@@ -97,13 +109,23 @@ STRICT:
 Return ONLY SQL
 No explanation
 No markdown
-Use exact table names WITH double quotes
+
+ALWAYS wrap table names in double quotes.
+Example:
+"customer"
+"order"
+"product"
+Never use unquoted table names.
+
 Do NOT pluralize
 The table names are CASE-SENSITIVE and EXACT
 Any other table name is INVALID.
 Only generate SELECT queries
 Never modify the database
 Never use multiple statements
+
+Only use tables that are necessary for the user query.
+Do NOT include joins unless required.
 
 Column names:
 customerid (NOT customer_id)
@@ -114,6 +136,11 @@ SELECT SUM("amount") FROM "order"
 
 When listing customers with orders:
 - Use INNER JOIN (exclude customers with no orders)
+
+Use case-insensitive comparisons for text fields (e.g., LOWER(column) = LOWER('value'))
+
+If you use aliases, ALWAYS use them consistently.
+Do NOT mix alias and table name.
 `;
 
     const prompt = `
@@ -121,7 +148,8 @@ ${systemPrompt}
 User query:
 ${userQuery}
 `;
-    const cleanedSQL = await generateSQL(prompt);
+    const rawSQL = await generateSQL(prompt);
+    const cleanedSQL = fixSQL(rawSQL);
     let currentResult = normalizeExecuteResult(await execute(cleanedSQL));
 
     const MAX_RETRIES = 2;
@@ -130,7 +158,7 @@ ${userQuery}
     while (attempts < MAX_RETRIES && "error" in currentResult) {
         attempts++;
         const failedQuery = currentResult.failedQuery ?? cleanedSQL;
-       const fixPrompt = `
+        const fixPrompt = `
 The following SQL query failed:
 
 Query:
@@ -158,7 +186,8 @@ SUM(product.price * order_item.quantity)
 Fix ONLY the SQL.
 Return ONLY the corrected SQL query.
 `;
-        const retriedSQL = await generateSQL(fixPrompt);
+        const retriedRawSQL = await generateSQL(fixPrompt);
+        const retriedSQL = fixSQL(retriedRawSQL);
         currentResult = normalizeExecuteResult(await execute(retriedSQL));
         console.log("retry attempts:", attempts);
         console.log("Fixed Sql:", retriedSQL);
@@ -174,5 +203,5 @@ Return ONLY the corrected SQL query.
         .map((row) =>
             Object.entries(row)
                 .map(([k, v]) => `${k}: ${v}`))
-                .join("\n\n");
+        .join("\n\n");
 }

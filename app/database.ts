@@ -2,7 +2,15 @@
 
 import sqlite3 from "sqlite3";
 import { customerTable, orderTable, productTable, orderItemTable } from "./constants"
-import { error } from "console";
+
+let initialized = false;
+
+export async function initDB() {
+  if (initialized) return;
+
+  await seed();
+  initialized = true;
+}
 
 const db = new sqlite3.Database(":memory:");
 
